@@ -1,25 +1,52 @@
 {
   "expo": {
-    "name": "pindou-app",
+    "name": "拼豆图纸",
     "slug": "pindou-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tianwei.beadpattern"
     },
     "android": {
+      "package": "com.tianwei.beadpattern",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F6F4EE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "允许保存拼豆图纸到相册",
+          "savePhotosPermission": "允许保存拼豆图纸到相册",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许选择图片以生成拼豆图纸",
+          "cameraPermission": "允许拍照以生成拼豆图纸"
+        }
+      ]
+    ]
   }
 }
