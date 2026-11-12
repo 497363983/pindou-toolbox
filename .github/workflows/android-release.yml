@@ -47,6 +47,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: 配置 Android SDK 工具路径
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BIN=$(dirname "$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -n 1)")
+          echo "$BIN" >> "$GITHUB_PATH"
+
       - name: 接受 Android SDK 许可
         run: yes | sdkmanager --licenses
 
