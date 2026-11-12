@@ -1,6 +1,7 @@
 // 拼豆网格渲染：Skia 绘制每颗豆 + 网格线 + 拼豆板边界
 import { Canvas, Group, Path, Rect } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
+import { type GestureResponderEvent, View } from 'react-native';
 import { Skia } from '@shopify/react-native-skia';
 import type { Palette } from '../core/palette';
 import type { BeadPattern } from '../core/types';
@@ -15,6 +16,8 @@ interface Props {
   /** 是否给豆子圆角（更像豆） */
   rounded?: boolean;
   boardSize?: number;
+  onCellTap?: (gx: number, gy: number) => void;
+  selected?: { gx: number; gy: number } | null;
 }
 
 export function BeadCanvas({
@@ -25,6 +28,8 @@ export function BeadCanvas({
   showGrid = true,
   rounded = true,
   boardSize,
+  onCellTap,
+  selected,
 }: Props) {
   const { gridW, gridH, cells } = pattern;
 
@@ -91,38 +96,64 @@ export function BeadCanvas({
     return p;
   }, [boardSize, layout, gridW, gridH]);
 
+  function handleTap(e: GestureResponderEvent) {
+    if (!onCellTap) return;
+    const { locationX, locationY } = e.nativeEvent;
+    const gx = Math.floor((locationX - layout.ox) / layout.cell);
+    const gy = Math.floor((locationY - layout.oy) / layout.cell);
+    if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH) onCellTap(gx, gy);
+  }
+
   return (
-    <Canvas style={{ width, height }}>
-      <Group>
-        {beads.map((b, i) => (
-          <Rect
-            key={i}
-            x={b.x}
-            y={b.y}
-            width={b.s}
-            height={b.s}
-            color={b.color}
+    <View
+      style={{ width, height }}
+      onStartShouldSetResponder={() => !!onCellTap}
+      onResponderRelease={handleTap}
+      collapsable={false}
+    >
+      <Canvas style={{ width, height }}>
+        <Group>
+          {beads.map((b, i) => (
+            <Rect
+              key={i}
+              x={b.x}
+              y={b.y}
+              width={b.s}
+              height={b.s}
+              color={b.color}
+            />
+          ))}
+        </Group>
+        {gridPath && (
+          <Path
+            path={gridPath}
+            style="stroke"
+            strokeWidth={0.5}
+            color={theme.colors.textFaint}
+            opacity={0.35}
           />
-        ))}
-      </Group>
-      {gridPath && (
-        <Path
-          path={gridPath}
-          style="stroke"
-          strokeWidth={0.5}
-          color={theme.colors.textFaint}
-          opacity={0.35}
-        />
-      )}
-      {boardPath && (
-        <Path
-          path={boardPath}
-          style="stroke"
-          strokeWidth={1.5}
-          color={theme.colors.primaryDeep}
-          opacity={0.55}
-        />
-      )}
-    </Canvas>
+        )}
+        {boardPath && (
+          <Path
+            path={boardPath}
+            style="stroke"
+            strokeWidth={1.5}
+            color={theme.colors.primaryDeep}
+            opacity={0.55}
+          />
+        )}
+        {selected && (
+          <Rect
+            x={layout.ox + selected.gx * layout.cell + 1}
+            y={layout.oy + selected.gy * layout.cell + 1}
+            width={layout.cell - 2}
+            height={layout.cell - 2}
+            style="stroke"
+            strokeWidth={2.5}
+            color={theme.colors.primary}
+          />
+        )}
+      </Canvas>
+    </View>
   );
 }

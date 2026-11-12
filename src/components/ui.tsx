@@ -1,10 +1,12 @@
 // 通用 UI 组件
 import { Ionicons } from '@expo/vector-icons';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ViewStyle,
 } from 'react-native';
@@ -84,6 +86,7 @@ export function Stepper({
   max = 300,
   step = 1,
   hint,
+  numericInput = true,
 }: {
   label: string;
   value: number;
@@ -92,8 +95,22 @@ export function Stepper({
   max?: number;
   step?: number;
   hint?: string;
+  numericInput?: boolean;
 }) {
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
+  const [text, setText] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+
+  // 外部值变化（如按比例）时同步输入框
+  if (!editing && text !== String(value)) setText(String(value));
+
+  function commit(raw: string) {
+    const n = parseInt(raw.replace(/[^0-9]/g, ''), 10);
+    if (!Number.isNaN(n)) onChange(clamp(n));
+    setEditing(false);
+    setText(String(Number.isNaN(n) ? value : clamp(n)));
+  }
+
   return (
     <View style={styles.stepperRow}>
       <View style={{ flex: 1 }}>
@@ -107,7 +124,30 @@ export function Stepper({
       >
         <Ionicons name="remove" size={18} color={theme.colors.text} />
       </Pressable>
-      <Text style={styles.stepperValue}>{value}</Text>
+      {numericInput ? (
+        <TextInput
+          style={[styles.stepperInput, editing && styles.stepperInputActive]}
+          value={text}
+          keyboardType="number-pad"
+          onChangeText={(t) => {
+            const clean = t.replace(/[^0-9]/g, '');
+            setEditing(true);
+            setText(clean);
+            // 有效输入即时提交，保证 store 与输入同步
+            if (clean) {
+              const n = parseInt(clean, 10);
+              if (!Number.isNaN(n)) onChange(clamp(n));
+            }
+          }}
+          onEndEditing={() => commit(text)}
+          onSubmitEditing={() => commit(text)}
+          onBlur={() => commit(text)}
+          selectTextOnFocus
+          maxLength={4}
+        />
+      ) : (
+        <Text style={styles.stepperValue}>{value}</Text>
+      )}
       <Pressable
         onPress={() => onChange(clamp(value + step))}
         style={styles.stepperBtn}
@@ -203,6 +243,22 @@ const styles = StyleSheet.create({
     fontSize: theme.font.h2,
     fontWeight: '700',
     color: theme.colors.text,
+  },
+  stepperInput: {
+    minWidth: 56,
+    textAlign: 'center',
+    fontSize: theme.font.h2,
+    fontWeight: '700',
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: 10,
+    paddingVertical: 4,
+    marginHorizontal: 8,
+  },
+  stepperInputActive: {
+    backgroundColor: theme.colors.primarySoft,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
   },
   segmentWrap: {
     flexDirection: 'row',

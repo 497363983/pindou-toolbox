@@ -1,8 +1,10 @@
 import { registerRootComponent } from 'expo';
 
-import App from './App';
+// 原生入口：Skia 由系统提供，无需 CanvasKit
+function start() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const App = require('./App').default;
+  registerRootComponent(App);
+}
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-registerRootComponent(App);
+start();

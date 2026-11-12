@@ -64,3 +64,11 @@ export function getDefaultPalette(): Palette {
   }
   return defaultPalette;
 }
+
+/** "#RRGGBB" -> RGB；非法返回 null */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = hex.trim().replace(/^#/, '').match(/^([0-9a-fA-F]{6})$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}

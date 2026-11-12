@@ -1,15 +1,18 @@
 // 结果页：效果预览 / 施工图纸 / 用料清单 + 保存导出
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import * as MediaLibrary from 'expo-media-library';
-import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View, Dimensions, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BeadCanvas } from '../components/BeadCanvas';
 import { Button, Card, SectionLabel, Segmented } from '../components/ui';
-import { getDefaultPalette } from '../core/palette';
+// 按平台加载：web 用 Canvas2D 版本，原生用 Skia 版本
+const { BeadCanvas } = Platform.select({
+  web: () => require('../components/BeadCanvas.web'),
+  default: () => require('../components/BeadCanvas'),
+})!() as typeof import('../components/BeadCanvas');
+import { getPaletteById } from '../core/paletteRegistry';
 import { BOARDS } from '../data/boards';
+import { saveToGallery, shareImage } from '../services/export';
 import { renderPatternToFile } from '../services/renderPattern';
 import { useProjectStore } from '../store/projectStore';
 import { theme } from '../theme';
@@ -19,16 +22,20 @@ type Tab = 'preview' | 'chart' | 'materials';
 export function ResultScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
-  const [tab, setTab] = useState<Tab>('preview');
+  const [tab, setTab] = useState<Tab>('chart');
   const [chartUri, setChartUri] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState<{ gx: number; gy: number } | null>(null);
 
   const pattern = useProjectStore((s) => s.pattern)!;
   const settings = useProjectStore((s) => s.settings);
+  const paletteId = useProjectStore((s) => s.paletteId);
   const saveProject = useProjectStore((s) => s.saveProject);
+  const paintCell = useProjectStore((s) => s.paintCell);
 
-  const palette = useMemo(() => getDefaultPalette(), []);
+  const palette = useMemo(() => getPaletteById(paletteId), [paletteId]);
   const board = BOARDS.find((b) => b.id === settings.boardId) ?? BOARDS[0];
 
   const materials = useMemo(() => {
@@ -38,15 +45,29 @@ export function ResultScreen() {
   }, [pattern, palette]);
 
   useEffect(() => {
-    if (tab === 'chart' && !chartUri) {
-      const uri = renderPatternToFile(pattern, palette, 'chart', board.width);
-      setChartUri(uri);
+    if (tab === 'chart') {
+      setChartUri(renderPatternToFile(pattern, palette, 'chart', board.width));
+    } else if (tab === 'preview') {
+      setPreviewUri(renderPatternToFile(pattern, palette, 'preview', board.width));
     }
-    if (tab === 'preview' && !previewUri) {
-      const uri = renderPatternToFile(pattern, palette, 'preview', board.width);
-      setPreviewUri(uri);
+  }, [tab, pattern, palette, board]);
+
+  function chooseColor(idx: number) {
+    if (!selected) {
+      flash('请先点选要修改的格子');
+      return;
     }
-  }, [tab, chartUri, previewUri, pattern, palette, board]);
+    paintCell(selected.gx, selected.gy, idx);
+  }
+
+  // web 临时调试钩子：导出高清效果图/图纸
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    (window as any).__hiRes = () =>
+      renderPatternToFile(pattern, palette, 'preview', board.width);
+    (window as any).__chartHiRes = () =>
+      renderPatternToFile(pattern, palette, 'chart', board.width);
+  }, [pattern, palette, board]);
 
   function flash(msg: string) {
     setToast(msg);
@@ -58,26 +79,16 @@ export function ResultScreen() {
     flash(saved ? '已保存到我的作品' : '保存失败');
   }
 
-  async function ensurePerm() {
-    const p = await MediaLibrary.requestPermissionsAsync();
-    return p.granted;
-  }
-
   async function exportChart() {
     const uri = chartUri ?? renderPatternToFile(pattern, palette, 'chart', board.width);
-    if (await ensurePerm()) {
-      await MediaLibrary.saveToLibraryAsync(uri);
-      flash('施工图纸已保存到相册');
-    }
+    const ok = await saveToGallery(uri);
+    flash(ok ? '施工图纸已导出' : '未获得相册权限');
   }
 
   async function shareChart() {
     const uri = chartUri ?? renderPatternToFile(pattern, palette, 'chart', board.width);
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri);
-    } else {
-      flash('当前设备不支持分享');
-    }
+    const ok = await shareImage(uri);
+    if (!ok) flash('当前设备不支持分享');
   }
 
   return (
@@ -112,10 +123,21 @@ export function ResultScreen() {
             />
           )}
           {tab === 'chart' &&
-            (chartUri ? (
+            (editing ? (
+              <BeadCanvas
+                pattern={pattern}
+                palette={palette}
+                width={stageSize}
+                height={stageSize}
+                boardSize={board.width}
+                rounded={false}
+                selected={selected}
+                onCellTap={(gx, gy) => setSelected({ gx, gy })}
+              />
+            ) : chartUri ? (
               <Image
                 source={{ uri: chartUri }}
-                style={{ width: '100%', height: 360 }}
+                style={{ width: '100%', height: 460 }}
                 resizeMode="contain"
               />
             ) : (
@@ -142,6 +164,39 @@ export function ResultScreen() {
           <Text style={styles.tip}>深色粗线为拼豆板边界，可据此分板拼制</Text>
         )}
 
+        {tab === 'chart' && (
+          <>
+            <View style={{ height: 12 }} />
+            <Button
+              title={editing ? '完成编辑' : '编辑格点颜色'}
+              icon={editing ? 'checkmark' : 'color-palette'}
+              variant={editing ? 'secondary' : 'ghost'}
+              full
+              onPress={() => {
+                setEditing((e) => !e);
+                setSelected(null);
+              }}
+            />
+            {editing && (
+              <Card style={{ marginTop: 12, paddingVertical: 10 }}>
+                <Text style={styles.editHint}>
+                  {selected
+                    ? `已选 第${selected.gy + 1}行 第${selected.gx + 1}列，点下方颜色替换`
+                    : '先在上方点选要修改的格子'}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <View style={styles.swatchBar}>
+                    <ColorChip hex="#F6F4EE" label="擦除" onPress={() => chooseColor(-1)} />
+                    {palette.beads.map((b, i) => (
+                      <ColorChip key={b.code} hex={b.hex} label={b.code} onPress={() => chooseColor(i)} />
+                    ))}
+                  </View>
+                </ScrollView>
+              </Card>
+            )}
+          </>
+        )}
+
         <SectionLabel>操作</SectionLabel>
         <Button title="保存到我的作品" icon="bookmark" full onPress={handleSave} />
         <View style={{ height: 10 }} />
@@ -156,6 +211,15 @@ export function ResultScreen() {
         </View>
       )}
     </View>
+  );
+}
+
+function ColorChip({ hex, label, onPress }: { hex: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.chip}>
+      <View style={[styles.chipSwatch, { backgroundColor: hex }]} />
+      <Text style={styles.chipLabel}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -182,4 +246,9 @@ const styles = StyleSheet.create({
   matN: { fontSize: theme.font.h2, fontWeight: '700', color: theme.colors.text },
   toast: { position: 'absolute', alignSelf: 'center', backgroundColor: theme.colors.dark, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999 },
   toastText: { color: '#fff', fontSize: theme.font.small },
+  editHint: { fontSize: theme.font.small, color: theme.colors.textSoft, textAlign: 'center', paddingHorizontal: 8 },
+  swatchBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 4, paddingVertical: 4 },
+  chip: { alignItems: 'center', width: 52 },
+  chipSwatch: { width: 44, height: 44, borderRadius: 9, borderWidth: 1, borderColor: theme.colors.border },
+  chipLabel: { fontSize: 11, color: theme.colors.textSoft, marginTop: 4 },
 });

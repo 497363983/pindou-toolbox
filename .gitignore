@@ -39,3 +39,22 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# build output
+/web
+dist-test/
+
+# android packages
+*.apk
+*.aab
+
+# logs
+*.log
+prebuild-log.txt
+
+# local debugging artifacts (emulator screenshots & UI dumps)
+emu-*.png
+ui*.xml
+
+# generated bead pattern images
+pindou-*.png

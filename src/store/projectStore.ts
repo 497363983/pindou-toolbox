@@ -5,12 +5,14 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { BeadPattern } from '../core/types';
 
 export type Sampling = 'dominant' | 'average';
+export type Dither = 'floyd' | 'none';
 
 export interface Settings {
   gridW: number;
   gridH: number;
   boardId: string;
   sampling: Sampling;
+  dither: Dither;
 }
 
 export interface SavedProject {
@@ -23,6 +25,7 @@ export interface SavedProject {
   gridH: number;
   boardId: string;
   sampling: Sampling;
+  dither: Dither;
   cells: number[];
   counts: [number, number][];
   totalBeads: number;
@@ -39,8 +42,10 @@ interface ProjectState {
   projects: SavedProject[];
 
   setImage: (uri: string, w: number, h: number) => void;
+  setPaletteId: (id: string) => void;
   updateSettings: (p: Partial<Settings>) => void;
   setPattern: (p: BeadPattern) => void;
+  paintCell: (gx: number, gy: number, newIdx: number) => void;
   saveProject: (name: string) => SavedProject | null;
   deleteProject: (id: string) => void;
   loadProject: (p: SavedProject) => void;
@@ -52,6 +57,7 @@ const DEFAULT_SETTINGS: Settings = {
   gridH: 29,
   boardId: 'b29',
   sampling: 'dominant',
+  dither: 'none',
 };
 
 function patternToSaved(
@@ -83,10 +89,45 @@ export const useProjectStore = create<ProjectState>()(
       setImage: (uri, w, h) =>
         set({ imageUri: uri, sourceW: w, sourceH: h, pattern: null }),
 
+      setPaletteId: (id) => set({ paletteId: id }),
+
       updateSettings: (p) =>
         set((s) => ({ settings: { ...s.settings, ...p } })),
 
       setPattern: (pattern) => set({ pattern }),
+
+      paintCell: (gx, gy, newIdx) => {
+        const { pattern } = get();
+        if (!pattern) return;
+        const { gridW, cells, counts } = pattern;
+        const k = gy * gridW + gx;
+        const old = cells[k];
+        if (old === newIdx) return;
+        const nextCells = Int32Array.from(cells);
+        nextCells[k] = newIdx;
+        const nextCounts = new Map(counts);
+        if (old >= 0) {
+          const v = (nextCounts.get(old) ?? 1) - 1;
+          if (v <= 0) nextCounts.delete(old);
+          else nextCounts.set(old, v);
+        }
+        if (newIdx >= 0) {
+          nextCounts.set(newIdx, (nextCounts.get(newIdx) ?? 0) + 1);
+        }
+        let total = 0;
+        nextCounts.forEach((v) => {
+          total += v;
+        });
+        set({
+          pattern: {
+            ...pattern,
+            cells: nextCells,
+            counts: nextCounts,
+            colorCount: nextCounts.size,
+            totalBeads: total,
+          },
+        });
+      },
 
       saveProject: (name) => {
         const { pattern, imageUri, settings, paletteId } = get();
@@ -99,6 +140,7 @@ export const useProjectStore = create<ProjectState>()(
           gridH: settings.gridH,
           boardId: settings.boardId,
           sampling: settings.sampling,
+          dither: settings.dither,
         });
         set((s) => ({ projects: [saved, ...s.projects] }));
         return saved;
@@ -116,6 +158,7 @@ export const useProjectStore = create<ProjectState>()(
             gridH: p.gridH,
             boardId: p.boardId,
             sampling: p.sampling,
+            dither: p.dither ?? 'floyd',
           },
           pattern: {
             gridW: p.gridW,

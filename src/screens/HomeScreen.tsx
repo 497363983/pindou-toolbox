@@ -2,7 +2,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card } from '../components/ui';
 import { useProjectStore } from '../store/projectStore';
@@ -41,6 +41,32 @@ export function HomeScreen() {
     nav.navigate('Result');
   }
 
+  // web 端：直接载入示例图，绕过系统文件选择器（便于功能验证）
+  async function loadSample() {
+    try {
+      const resp = await fetch('/test-img.png');
+      const blob = await resp.blob();
+      const dataUrl: string = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      await new Promise<void>((resolve) => {
+        const im = new (window as any).Image();
+        im.onload = () => {
+          setImage(dataUrl, im.width, im.height);
+          resolve();
+        };
+        im.src = dataUrl;
+      });
+      (window as any).__sampleStage = 'navigating';
+      nav.navigate('Editor');
+      (window as any).__sampleStage = 'navigated';
+    } catch (e: any) {
+      (window as any).__sampleErr = String(e && e.stack ? e.stack : e);
+    }
+  }
+
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
       <ScrollView
@@ -63,6 +89,12 @@ export function HomeScreen() {
           <View style={{ height: 12 }} />
           <Button title="从相册选择" icon="images" full onPress={() => pick(false)} />
           <View style={{ height: 10 }} />
+          {Platform.OS === 'web' && (
+            <>
+              <Button title="使用示例图片" icon="sparkles" variant="ghost" full onPress={loadSample} />
+              <View style={{ height: 10 }} />
+            </>
+          )}
           <Button
             title="拍照"
             icon="camera"

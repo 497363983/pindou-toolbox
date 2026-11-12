@@ -22,8 +22,10 @@ export interface ConvertOptions {
   gridW: number;
   /** 目标网格高（格） */
   gridH: number;
-  /** 取色方式：dominant=主导色（默认，边界清晰）；average=平均色 */
+  /** 取色方式：dominant=主导色（边界清晰）；average=平均色（柔和）；默认 dominant */
   sampling?: 'dominant' | 'average';
+  /** 抖动：floyd=Floyd–Steinberg 抖动（默认，渐变/明暗更还原）；none=关闭 */
+  dither?: 'floyd' | 'none';
   /** 主导色量化步长（每通道），越小越精细、越抗噪越弱，默认 16 */
   bucketStep?: number;
   /** 透明像素（alpha 小于该值）视为空，默认 10 */

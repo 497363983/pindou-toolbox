@@ -1,15 +1,17 @@
 // 编辑页：设置网格、板型、取色方式并生成图纸
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card, SectionLabel, Segmented, Stepper } from '../components/ui';
-import { getDefaultPalette } from '../core/palette';
+import { getPaletteById, usePaletteList } from '../core/paletteRegistry';
 import { convertToBeads } from '../core/quantize';
 import { BOARDS, boardCountFor } from '../data/boards';
+import { BUILTIN_PALETTES } from '../data/palettes';
 import { readImagePixels } from '../services/imagePixels';
-import { useProjectStore, type Sampling } from '../store/projectStore';
+import { usePaletteStore } from '../store/paletteStore';
+import { useProjectStore, type Dither, type Sampling } from '../store/projectStore';
 import { theme } from '../theme';
 
 export function EditorScreen() {
@@ -24,11 +26,21 @@ export function EditorScreen() {
   const settings = useProjectStore((s) => s.settings);
   const updateSettings = useProjectStore((s) => s.updateSettings);
   const setPattern = useProjectStore((s) => s.setPattern);
+  const paletteId = useProjectStore((s) => s.paletteId);
+  const setPaletteId = useProjectStore((s) => s.setPaletteId);
+  const paletteList = usePaletteList();
+  const createPalette = usePaletteStore((s) => s.createPalette);
+  const duplicateBuiltin = usePaletteStore((s) => s.duplicateBuiltin);
 
   const board = BOARDS.find((b) => b.id === settings.boardId) ?? BOARDS[0];
   const usage = boardCountFor(settings.gridW, settings.gridH, board);
   const widthCm = ((settings.gridW * board.beadMm) / 10).toFixed(1);
   const heightCm = ((settings.gridH * board.beadMm) / 10).toFixed(1);
+
+  // web 临时钩子：直接改设置
+  useEffect(() => {
+    (window as any).__set = (o: any) => updateSettings(o);
+  }, [updateSettings]);
 
   function syncAspect() {
     if (sourceW && sourceH) {
@@ -36,16 +48,31 @@ export function EditorScreen() {
     }
   }
 
+  function newCustomPalette() {
+    const id = createPalette('我的色板');
+    setPaletteId(id);
+    nav.navigate('PaletteEditor', { paletteId: id });
+  }
+
+  function copyBuiltin(id: string) {
+    const def = BUILTIN_PALETTES.find((b) => b.raw.id === id);
+    if (!def) return;
+    const newId = duplicateBuiltin(def.raw, `${def.raw.title}（副本）`);
+    setPaletteId(newId);
+    nav.navigate('PaletteEditor', { paletteId: newId });
+  }
+
   async function generate() {
     setBusy(true);
     setError(null);
     try {
       const pixels = await readImagePixels(imageUri, settings.gridW, settings.gridH);
-      const palette = getDefaultPalette();
+      const palette = getPaletteById(paletteId);
       const pattern = convertToBeads(pixels, palette, {
         gridW: settings.gridW,
         gridH: settings.gridH,
         sampling: settings.sampling,
+        dither: settings.dither,
       });
       setPattern(pattern);
       nav.navigate('Result');
@@ -97,6 +124,56 @@ export function EditorScreen() {
           <Button title="按原图比例" icon="link" variant="ghost" onPress={syncAspect} />
         </Card>
 
+        <SectionLabel>豆色标准（品牌色板）</SectionLabel>
+        <Card style={{ paddingVertical: 6 }}>
+          {paletteList.map((p) => {
+            const active = p.id === paletteId;
+            return (
+              <View key={p.id} style={styles.paletteRow}>
+                <Ionicons
+                  name={active ? 'radio-button-on' : 'radio-button-off'}
+                  size={20}
+                  color={active ? theme.colors.primary : theme.colors.textFaint}
+                />
+                <Pressable
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onPress={() => setPaletteId(p.id)}
+                >
+                  <Text
+                    style={[styles.paletteName, active && { color: theme.colors.primaryDeep }]}
+                  >
+                    {p.brand} · {p.title}
+                  </Text>
+                  <Text style={styles.paletteSub}>
+                    {p.custom ? `${p.count} 色 · 自定义` : p.note}
+                  </Text>
+                </Pressable>
+                {p.custom ? (
+                  <Ionicons
+                    name="create-outline"
+                    size={20}
+                    color={theme.colors.primary}
+                    onPress={() => nav.navigate('PaletteEditor', { paletteId: p.id })}
+                  />
+                ) : (
+                  <Ionicons
+                    name="copy-outline"
+                    size={19}
+                    color={theme.colors.textFaint}
+                    onPress={() => copyBuiltin(p.id)}
+                  />
+                )}
+              </View>
+            );
+          })}
+        </Card>
+        <Button
+          title="新建自定义色板"
+          icon="color-palette"
+          variant="ghost"
+          onPress={newCustomPalette}
+        />
+
         <SectionLabel>取色方式</SectionLabel>
         <Card style={{ paddingVertical: 10 }}>
           <Segmented<Sampling>
@@ -105,6 +182,18 @@ export function EditorScreen() {
             options={[
               { value: 'dominant', label: '主导色（清晰）' },
               { value: 'average', label: '平均色（柔和）' },
+            ]}
+          />
+        </Card>
+
+        <SectionLabel>色彩还原（抖动）</SectionLabel>
+        <Card style={{ paddingVertical: 10 }}>
+          <Segmented<Dither>
+            value={settings.dither}
+            onChange={(v) => updateSettings({ dither: v })}
+            options={[
+              { value: 'floyd', label: '抖动（更还原）' },
+              { value: 'none', label: '关闭（色块干净）' },
             ]}
           />
         </Card>
@@ -174,6 +263,14 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   boardName: { fontSize: theme.font.body, color: theme.colors.text, marginLeft: 10, flex: 1 },
+  paletteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  paletteName: { fontSize: theme.font.body, color: theme.colors.text, fontWeight: '600' },
+  paletteSub: { fontSize: theme.font.tiny, color: theme.colors.textFaint, marginTop: 2 },
   summary: { marginTop: 16, gap: 10 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   infoText: { fontSize: theme.font.small, color: theme.colors.textSoft, marginLeft: 8 },
