@@ -47,15 +47,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 Android SDK
+      - name: 安装 Android SDK 并接受许可
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
-          packages: |
-            platform-tools
-            platforms;android-36
-            build-tools;36.0.0
-            ndk;27.1.12297006
+
+      - name: 安装所需 SDK 组件
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
 
       - name: 安装依赖
         run: npm ci
