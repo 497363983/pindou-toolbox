@@ -176,4 +176,9 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## License
 
-MIT
+本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) 授权。
+
+- 个人学习、研究、爱好等**非商业用途**可免费使用、修改与分发；
+- 任何**商业用途**（包括但不限于将本软件或其修改版用于商业服务、上架收费或公司经营）均需事先取得书面商业授权。
+
+版权所有 © 2026 钱薇薇。
